@@ -139,6 +139,57 @@ class ConfigureKeepTest(unittest.TestCase):
             self.assertEqual(cleared.returncode, 0, cleared.stderr)
             self.assertIn('DNS_UPSTREAM=""', conf.read_text())
 
+    def run_twice(self, first_flags, second_flags=()):
+        """Runs configure.sh twice against one dumbtv.conf; returns the second result and file."""
+        with tempfile.TemporaryDirectory() as tmp:
+            conf = Path(tmp) / "dumbtv.conf"
+            env = dict(os.environ, CONF=str(conf))
+            script = str(ROOT / "scripts" / "configure.sh")
+            subprocess.run(["bash", script, "-y", *first_flags], env=env,
+                           capture_output=True, text=True, check=True)
+            second = subprocess.run(["bash", script, "-y", *second_flags], env=env,
+                                    capture_output=True, text=True)
+            return second, conf.read_text()
+
+    def test_home_app_is_empty_by_default(self):
+        result, conf = self.configure()
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('HOME_APP=""', conf)
+
+    def test_home_app_is_saved(self):
+        result, conf = self.configure("--home-app", "com.overdevs.at4k")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertIn('HOME_APP="com.overdevs.at4k"', conf)
+
+    def test_home_app_is_kept_on_the_next_run(self):
+        second, conf = self.run_twice(["--home-app", "com.overdevs.at4k"])
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertIn('HOME_APP="com.overdevs.at4k"', conf)
+
+    def test_empty_home_app_goes_back_to_dumbtv_home(self):
+        second, conf = self.run_twice(["--home-app", "com.overdevs.at4k"],
+                                      ["--home-app", ""])
+        self.assertEqual(second.returncode, 0, second.stderr)
+        self.assertIn('HOME_APP=""', conf)
+
+    def test_home_app_must_be_a_package_name(self):
+        for bad in ("at4k", "com.overdevs.at4k; reboot", "com/overdevs/at4k", "1com.x"):
+            result, conf = self.configure("--home-app", bad)
+            self.assertNotEqual(result.returncode, 0, bad)
+            self.assertIsNone(conf, bad)
+
+    def test_home_app_cannot_be_amazons_launcher(self):
+        result, conf = self.configure("--home-app", "com.amazon.tv.launcher")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Amazon's launcher", result.stderr)
+        self.assertIsNone(conf)
+
+    def test_home_app_without_a_value_is_refused(self):
+        result, conf = self.configure("--home-app")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn('pass ""', result.stderr)
+        self.assertIsNone(conf)
+
 
 if __name__ == "__main__":
     unittest.main()

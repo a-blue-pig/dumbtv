@@ -12,6 +12,7 @@ import android.graphics.PixelFormat;
 import android.os.Handler;
 import android.os.Looper;
 import android.os.SystemClock;
+import android.provider.Settings;
 import android.view.View;
 import android.view.ViewTreeObserver;
 import android.view.WindowManager;
@@ -27,7 +28,8 @@ import android.view.accessibility.AccessibilityEvent;
  * {@code alarm_manager_constants} has {@code min_futurity=0}; install.sh sets it.
  *
  * Amazon's home is covered with a plain overlay until ours has drawn, so it never shows.
- * "Ours" is AT4K ({@link #AT4K}) when it is installed, otherwise dumbtv's own {@link Home}.
+ * "Ours" is the launcher named by {@link #HOME_APP} when it is installed, otherwise dumbtv's
+ * own {@link Home}.
  *
  * Android 11 refuses an activity start from an app with no visible window, even one sent
  * through system_server by an alarm ("Background activity start ... callingUidHasAnyVisibleWindow:
@@ -36,8 +38,11 @@ import android.view.accessibility.AccessibilityEvent;
  */
 public final class Guard extends AccessibilityService {
     static final String AMAZON = "com.amazon.tv.launcher";
-    /** The home screen HOME is handed to when it is installed; see {@link #target}. */
-    static final String AT4K = "com.overdevs.at4k";
+    /**
+     * Global setting naming the package HOME is handed to instead of {@link Home}. install.sh
+     * writes it from HOME_APP in dumbtv.conf; unset or empty keeps dumbtv home.
+     */
+    static final String HOME_APP = "dumbtv_home_app";
     private static final String AMAZON_HOME = "com.amazon.tv.launcher.ui.HomeActivity_vNext";
     private static final long COVER_MAX_MS = 1500;
     private static final long REPEAT_MS = 1000;
@@ -82,17 +87,22 @@ public final class Guard extends AccessibilityService {
     }
 
     /**
-     * What a HOME press lands on: AT4K's home screen when AT4K is installed, else its launcher
-     * entry, else our own {@link Home}. The fallback matters because the alarm sends the intent
-     * from system_server, where a missing package fails silently and leaves Amazon's home up.
+     * What a HOME press lands on: the home screen of the package named in the global setting
+     * {@link #HOME_APP}, else that package's launcher entry, else our own {@link Home}. The
+     * fallback matters because the alarm sends the intent from system_server, where a missing
+     * package fails silently and leaves Amazon's home up.
      */
     private static Intent target(Context c) {
-        PackageManager pm = c.getPackageManager();
-        Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-                .setPackage(AT4K);
-        if (home.resolveActivity(pm) != null) return home;
-        Intent entry = pm.getLaunchIntentForPackage(AT4K);
-        if (entry != null) return entry;
+        String app = Settings.Global.getString(c.getContentResolver(), HOME_APP);
+        if (app != null) app = app.trim();
+        if (app != null && !app.isEmpty() && !AMAZON.equals(app)) {
+            PackageManager pm = c.getPackageManager();
+            Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                    .setPackage(app);
+            if (home.resolveActivity(pm) != null) return home;
+            Intent entry = pm.getLaunchIntentForPackage(app);
+            if (entry != null) return entry;
+        }
         return new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
                 .setClass(c, Home.class);
     }
@@ -144,7 +154,8 @@ public final class Guard extends AccessibilityService {
             paused = false;
             if (!getPackageName().contentEquals(pkg)) {
                 arrived(this);
-                // Home calls shown() once it has drawn; AT4K cannot, so its first window does.
+                // Home calls shown() once it has drawn; another launcher cannot, so its first
+                // window does.
                 uncover();
             }
             return;

@@ -25,15 +25,22 @@ if [[ $SDK -lt 28 ]]; then
 else
   note "take over HOME: accessibility service + settings global alarm_manager_constants min_futurity=0"
 fi
-note "HOME opens AT4K (com.overdevs.at4k) when it is installed, else dumbtv home"
+if [[ -n $HOME_APP && $SDK -ge 28 ]]; then
+  note "HOME opens $HOME_APP (HOME_APP in dumbtv.conf); dumbtv home is the fallback if it is missing"
+elif [[ -n $HOME_APP ]]; then
+  note "HOME_APP=$HOME_APP is ignored on Fire OS 6: the Keeper opens dumbtv home"
+fi
 note "Amazon's launcher stays installed: hold HOME for Fire OS's menu, or Options > Open Amazon's home screen"
 if [[ $DRY_RUN == 1 ]]; then
   note "[dry-run] ADB=$ADB ADB_SERIAL=$SERIAL launcher/install.sh"
   exit 0
 fi
+if [[ -n $HOME_APP && $SDK -ge 28 ]] && ! present "$HOME_APP"; then
+  die "HOME_APP=$HOME_APP is not installed on $SERIAL. Install it first, or run ./scripts/configure.sh --home-app \"\" to use dumbtv home."
+fi
 confirm "Replace the home screen on $SERIAL?" || die "cancelled"
 
-ADB=$ADB ADB_SERIAL=$SERIAL "$ROOT/launcher/install.sh" || die "launcher install failed (see above)"
+HOME_APP=$HOME_APP ADB=$ADB ADB_SERIAL=$SERIAL "$ROOT/launcher/install.sh" || die "launcher install failed (see above)"
 
 HOME_PKG=$(home_package)
 for _ in 1 2 3 4 5 6 7 8 9 10; do
@@ -43,7 +50,7 @@ for _ in 1 2 3 4 5 6 7 8 9 10; do
 done
 if [[ $home == "$HOME_PKG"/* ]]; then
   if [[ $HOME_PKG == "$PKG" ]]; then note "home screen is dumbtv home"
-  else note "home screen is AT4K ($HOME_PKG)"; fi
+  else note "home screen is $HOME_PKG"; fi
 elif [[ -z $home ]]; then
   note "could not read which app is in front; ./scripts/verify.sh checks the takeover"
 else

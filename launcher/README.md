@@ -192,15 +192,20 @@ protected package. Measured on a Fire OS 7 television:
 
 HOME from an app shows about 0.3 s of black, then this home screen.
 
-### Handing HOME to AT4K (Fire OS 7 and 8)
+### Handing HOME to another launcher (Fire OS 7 and 8)
 
-If AT4K (`com.overdevs.at4k`) is installed, `Guard` launches its home screen
-instead of dumbtv home; if it is not, `Guard` falls back to dumbtv home, so
-removing AT4K never leaves HOME dead. The cover is removed as soon as AT4K's
-first window appears (dumbtv home does it itself, AT4K cannot). `Keeper`, the
-Fire OS 6 path, still launches dumbtv home. `./scripts/verify.sh` expects HOME
-to land on AT4K when it is installed. Install AT4K before running
-`install.sh`; the release APK does not contain this change, so use `--build`.
+`./scripts/configure.sh --home-app com.overdevs.at4k` (any launcher package)
+saves `HOME_APP` in `dumbtv.conf`. `launcher.sh` passes it to `install.sh`,
+which writes the global setting `dumbtv_home_app`; `Guard` reads that setting
+when it replaces Amazon's home and launches that package's home screen instead
+of dumbtv home. If the package is missing, `Guard` falls back to dumbtv home, so
+removing that launcher never leaves HOME dead. The cover is removed as soon as
+the other launcher's first window appears (dumbtv home does it itself, another
+launcher cannot). `--home-app ""` goes back to dumbtv home, and
+`install.sh --undo` deletes the setting. `Keeper`, the Fire OS 6 path, ignores
+it. `./scripts/verify.sh` checks that the setting is on the TV and that HOME
+lands on that launcher. Install the launcher before running `launcher.sh`; the
+published release APK does not contain this change, so use `install.sh --build`.
 
 ### Fire OS 6
 

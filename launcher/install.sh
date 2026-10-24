@@ -4,6 +4,7 @@
 #   ./launcher/install.sh --build    build from source instead (needs a JDK and the Android SDK)
 #   ./launcher/install.sh --undo     hand HOME back to Amazon's launcher
 # Pick the device with ADB_SERIAL when more than one is connected.
+# HOME_APP=<package> makes HOME open that launcher instead of dumbtv home (Fire OS 7/8).
 set -euo pipefail
 cd "$(dirname "${BASH_SOURCE[0]}")"
 
@@ -12,8 +13,13 @@ source version.env
 APK_URL=https://github.com/humblemuzzu/dumbtv/releases/download/launcher-v$VERSION/dumbtv-home.apk
 
 PKG=tv.dumbtv.home
-# Guard hands HOME to this package when it is installed (Guard.target); else to dumbtv home.
-AT4K=com.overdevs.at4k
+# Optional: the package Guard hands HOME to instead of dumbtv home (Fire OS 7/8), e.g.
+# HOME_APP=com.overdevs.at4k. scripts/launcher.sh passes it from dumbtv.conf. Empty = dumbtv home.
+HOME_APP=${HOME_APP:-}
+if [[ -n $HOME_APP ]] && ! printf '%s' "$HOME_APP" | grep -Eq '^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$'; then
+  echo "error: HOME_APP='$HOME_APP' is not a package name (like com.example.launcher)" >&2
+  exit 2
+fi
 GUARD=$PKG/$PKG.Guard
 OLD_GUARD=com.spocky.projengmenu/com.spocky.projengmenu.services.ProjectivyAccessibilityService
 ADB=${ADB:-adb}
@@ -43,6 +49,12 @@ set_futurity() {
   if [[ $1 == on ]]; then cur=${cur:+$cur,}min_futurity=0; fi
   if [[ -n $cur ]]; then sh_ settings put global alarm_manager_constants "$cur"
   else sh_ settings delete global alarm_manager_constants >/dev/null; fi
+}
+
+# Tells Guard which launcher HOME opens (read in Guard.target); no argument = dumbtv home.
+set_home_app() {
+  if [[ -n ${1:-} ]]; then sh_ settings put global dumbtv_home_app "$1"
+  else sh_ settings delete global dumbtv_home_app >/dev/null; fi
 }
 
 # Fire OS 6's `settings` command silently drops writes to enabled_accessibility_services
@@ -83,6 +95,7 @@ if [[ $mode == undo ]]; then
   sh_ am force-stop $PKG >/dev/null 2>&1 || true
   sh_ appops set $PKG GET_USAGE_STATS default >/dev/null 2>&1 || true
   set_futurity off
+  set_home_app ""
   set_guard ""
   sh_ am start -a android.intent.action.MAIN -c android.intent.category.HOME >/dev/null 2>&1 || true
   echo "HOME handed back to Amazon's launcher (dumbtv home stays installed: adb uninstall $PKG)"
@@ -145,6 +158,7 @@ sh_ dumpsys deviceidle whitelist +$PKG >/dev/null
 # cannot bind there. Keeper watches Amazon's home through UsageStats and calls
 # moveTaskToFront instead, which is not subject to the 5 s app-switch delay.
 if [[ $dev_sdk -lt 28 ]]; then
+  [[ -z $HOME_APP ]] || echo "note: HOME_APP=$HOME_APP is ignored on Fire OS 6; the Keeper opens dumbtv home"
   set_guard ""
   sh_ appops set $PKG GET_USAGE_STATS allow
   sh_ am start -W -n $PKG/.Home >/dev/null
@@ -172,6 +186,7 @@ fi
 
 sh_ cmd package set-home-activity $PKG/.Home >/dev/null 2>&1 || true
 set_futurity on
+set_home_app "$HOME_APP"
 set_guard $GUARD
 sleep 2
 # The setting alone proves nothing: Fire OS decides whether the service is bound. On
@@ -194,13 +209,14 @@ if [[ $bound == 0 ]]; then
     echo "  remove it with: adb uninstall $PKG" >&2
   fi
   set_futurity off
+  set_home_app ""
   set_guard ""
   exit 1
 fi
-if installed $AT4K; then
-  sh_ am start -W -a android.intent.action.MAIN -c android.intent.category.HOME -p $AT4K >/dev/null
+if [[ -n $HOME_APP ]] && installed "$HOME_APP"; then
+  sh_ am start -W -a android.intent.action.MAIN -c android.intent.category.HOME -p "$HOME_APP" >/dev/null
 else
-  echo "note: AT4K ($AT4K) is not installed, so HOME opens dumbtv home. Install AT4K, then run this again."
+  [[ -z $HOME_APP ]] || echo "note: $HOME_APP is not installed, so HOME opens dumbtv home. Install it, then run this again."
   sh_ am start -W -n $PKG/.Home >/dev/null
 fi
 if installed com.spocky.projengmenu; then

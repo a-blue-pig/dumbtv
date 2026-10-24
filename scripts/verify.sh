@@ -106,8 +106,21 @@ else
   # Leave the home screen first: a swap that starts while our own activity is
   # still resumed is allowed anyway, and that would hide a takeover that is
   # broken.
-  # Guard hands HOME to AT4K when it is installed (Guard.target), so that is where it must land.
+  # Guard hands HOME to HOME_APP (dumbtv.conf) when it is set and installed (Guard.target),
+  # so that is where it must land.
   home_pkg=$(home_package)
+  if [[ -n $HOME_APP ]]; then
+    if [[ $home_pkg != "$HOME_APP" ]]; then
+      printf '%-10s %-38s %s\n' FAIL home-app "$HOME_APP is not installed; HOME opens dumbtv home"; fail=1
+    else
+      set_app=$(dev 'settings get global dumbtv_home_app' | tr -d '\r')
+      if [[ $set_app != "$HOME_APP" ]]; then
+        printf '%-10s %-38s %s\n' FAIL home-app "TV says ${set_app:-nothing}, not $HOME_APP; re-run launcher.sh"; fail=1
+      else
+        printf '%-10s %-38s %s\n' ok home-app "$HOME_APP"
+      fi
+    fi
+  fi
   [[ $wake == Awake ]] || { dev 'input keyevent KEYCODE_WAKEUP' >/dev/null 2>&1 || true; sleep 2; }
   dev 'am start -a android.intent.action.MAIN -c android.intent.category.LEANBACK_SETTINGS' >/dev/null 2>&1 || true
   for i in 1 2 3 4 5 6; do

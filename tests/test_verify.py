@@ -20,7 +20,7 @@ class VerifyTests(unittest.TestCase):
                    user='0', launcher='1', dump_code=0, alarms='min_futurity=0',
                    landed='tv.dumbtv.home/.Home',
                    away='com.amazon.tv.launcher/.ui.MainSettingsActivity',
-                   dnsfilter='0', extra=None):
+                   dnsfilter='0', home_app='', extra=None):
         # Android 14's shape (the fake reports sdk 34): a per-task topResumedActivity=,
         # and the top-level ResumedActivity: after the task list.
         def resumed(app):
@@ -36,8 +36,6 @@ class VerifyTests(unittest.TestCase):
                 {'out': resumed(away)},
                 {'out': resumed(landed)},
             ],
-            # AT4K absent unless a test says otherwise: HOME then lands on dumbtv home.
-            'pm path com.overdevs.at4k': {'out': ''},
             'dumpsys power': {'out': 'mWakefulness=Awake'},
             'settings get global alarm_manager_constants': {'out': alarms},
             'am get-current-user': {'out': user},
@@ -69,7 +67,8 @@ class VerifyTests(unittest.TestCase):
             data.write_text(json.dumps(replies))
             env = dict(os.environ, ADB=str(ROOT / 'tests/fake_verify_adb.py'),
                        SERIAL='test-tv', CONF=str(tmp / 'absent.conf'),
-                       DNSFILTER=dnsfilter, LAUNCHER=launcher, FAKE_ADB_LOG=str(log),
+                       DNSFILTER=dnsfilter, LAUNCHER=launcher, HOME_APP=home_app,
+                       FAKE_ADB_LOG=str(log),
                        FAKE_ADB_RESPONSES=str(data))
             result = subprocess.run(['bash', str(ROOT / 'scripts/verify.sh')],
                                     env=env, text=True, capture_output=True)
@@ -172,21 +171,42 @@ class VerifyTests(unittest.TestCase):
         self.assertIn('ok         home-key', result.stdout)
         self.assertIn('HOME lands on tv.dumbtv.home/.Home', result.stdout)
 
-    AT4K_INSTALLED = {'pm path com.overdevs.at4k': {'out': 'package:/data/app/com.overdevs.at4k/base.apk'}}
+    HOME_APP = 'com.overdevs.at4k'
+    HOME_APP_READY = {
+        f'pm path {HOME_APP}': {'out': f'package:/data/app/{HOME_APP}/base.apk'},
+        'settings get global dumbtv_home_app': {'out': HOME_APP},
+    }
 
-    def test_home_key_lands_on_at4k_when_it_is_installed(self):
-        result, _ = self.run_verify(self.modern(LABEL), landed='com.overdevs.at4k/.MainActivity',
-                                    extra=self.AT4K_INSTALLED)
+    def test_home_key_lands_on_the_configured_home_app(self):
+        result, _ = self.run_verify(self.modern(LABEL), landed=f'{self.HOME_APP}/.MainActivity',
+                                    home_app=self.HOME_APP, extra=self.HOME_APP_READY)
         self.assertEqual(result.returncode, 0, result.stdout)
-        self.assertIn('HOME lands on com.overdevs.at4k/.MainActivity', result.stdout)
+        self.assertIn(f'ok         home-app', result.stdout)
+        self.assertIn(f'HOME lands on {self.HOME_APP}/.MainActivity', result.stdout)
 
-    def test_home_key_on_dumbtv_home_fails_when_at4k_is_installed(self):
-        # Guard falls back to dumbtv home only when AT4K is missing; landing there with
-        # AT4K installed means the redirect did not work.
+    def test_home_key_on_dumbtv_home_fails_when_a_home_app_is_configured(self):
+        # Guard falls back to dumbtv home only when the app is missing; landing there with
+        # the app installed means the redirect did not work.
         result, _ = self.run_verify(self.modern(LABEL), landed='tv.dumbtv.home/.Home',
-                                    extra=self.AT4K_INSTALLED)
+                                    home_app=self.HOME_APP, extra=self.HOME_APP_READY)
         self.assertEqual(result.returncode, 1)
         self.assertIn('FAIL       home-key', result.stdout)
+
+    def test_a_home_app_that_is_not_installed_is_a_failure(self):
+        result, _ = self.run_verify(self.modern(LABEL), home_app=self.HOME_APP,
+                                    extra={f'pm path {self.HOME_APP}': {'out': ''}})
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('FAIL       home-app', result.stdout)
+
+    def test_a_home_app_the_tv_has_forgotten_is_a_failure(self):
+        # An update or a factory reset of settings drops the global key Guard reads.
+        ready = dict(self.HOME_APP_READY)
+        ready['settings get global dumbtv_home_app'] = {'out': 'null'}
+        result, _ = self.run_verify(self.modern(LABEL), landed=f'{self.HOME_APP}/.MainActivity',
+                                    home_app=self.HOME_APP, extra=ready)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('FAIL       home-app', result.stdout)
+        self.assertIn('re-run launcher.sh', result.stdout)
 
     def test_home_key_on_another_launcher_is_a_failure(self):
         # The service can be bound and the alarm can fire while HOME stays on

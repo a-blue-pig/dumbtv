@@ -4,15 +4,18 @@
 # unless it is named, and Prime Video and Alexa keep working.
 # Usage: ./scripts/configure.sh [--remove "pkg pkg"] [--keep "pkg pkg"] [--prime 0|1]
 #          [--alexa 0|1] [--launcher 0|1] [--dnsfilter 0|1] [--youtube 0|1]
-#          [--system-dns 0|1] [--dns-upstream "ip ip"] [-y] [--dry-run]
+#          [--system-dns 0|1] [--dns-upstream "ip ip"] [--home-app pkg] [-y] [--dry-run]
 # A flag answers its question without asking; -y takes the default for the rest.
 # --dns-upstream is optional. Unset, the filter keeps using the router.
+# --home-app is optional (Fire OS 7/8): HOME opens that launcher, e.g. com.overdevs.at4k,
+# instead of dumbtv home. Unset keeps a saved value; pass "" to go back to dumbtv home.
 set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/lib.sh"
 
 KEEP_ARG=""; REMOVE_ARG=""; ALEXA_ARG=""; SYSTEM_DNS_ARG=""
 PRIME_ARG=""; LAUNCHER_ARG=""; DNSFILTER_ARG=""; YOUTUBE_ARG=""
 DNS_UPSTREAM_SET=0; DNS_UPSTREAM_ARG=""
+HOME_APP_SET=0; HOME_APP_ARG=""
 flag01() { case $2 in 0|1) ;; *) die "$1 takes 0 or 1, got '$2'" ;; esac; }
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -27,6 +30,9 @@ while [[ $# -gt 0 ]]; do
     --dns-upstream)
       [[ $# -ge 2 ]] || die '--dns-upstream takes resolver IPs; pass "" to clear them'
       DNS_UPSTREAM_SET=1; DNS_UPSTREAM_ARG=$2; shift 2 ;;
+    --home-app)
+      [[ $# -ge 2 ]] || die '--home-app takes a package name; pass "" to use dumbtv home'
+      HOME_APP_SET=1; HOME_APP_ARG=$2; shift 2 ;;
     -y|--yes)     ASSUME_YES=1; shift ;;
     --dry-run)    DRY_RUN=1; shift ;;
     *) die "unknown flag: $1" ;;
@@ -114,12 +120,39 @@ fi
 DNS_UPSTREAM=$(printf '%s\n' "$DNS_UPSTREAM" | awk '{$1=$1; print}')
 fallback_dns >/dev/null || exit 1
 
+# Optional: the launcher HOME opens instead of dumbtv home (Fire OS 7/8). Empty = dumbtv home.
+# A saved value is kept; asked only on the terminal, and only when the home screen is replaced.
+if [[ $HOME_APP_SET == 1 ]]; then
+  HOME_APP=$HOME_APP_ARG
+elif [[ -f $CONF ]]; then
+  HOME_APP=$(sed -n 's/^HOME_APP=//p' "$CONF" | tail -1 | tr -d '"')
+else
+  HOME_APP=""
+fi
+if [[ $ASSUME_YES == 0 && $HOME_APP_SET == 0 && $LAUNCHER == 1 ]]; then
+  printf 'Open another launcher on HOME instead of dumbtv home? Package name such as com.overdevs.at4k, "none" for dumbtv home (Enter keeps "%s"): ' "${HOME_APP:-dumbtv home}" >&2
+  read -r more_home
+  case $more_home in
+    "") ;;
+    none|None|NONE) HOME_APP="" ;;
+    *) HOME_APP=$more_home ;;
+  esac
+fi
+HOME_APP=$(printf '%s' "$HOME_APP" | xargs)
+if [[ -n $HOME_APP ]]; then
+  printf '%s' "$HOME_APP" | grep -Eq '^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$' ||
+    die "--home-app '$HOME_APP' is not a package name (like com.overdevs.at4k)"
+  [[ $HOME_APP != com.amazon.tv.launcher ]] ||
+    die "--home-app cannot be Amazon's launcher: that is the home screen dumbtv replaces"
+fi
+
 if [[ $DRY_RUN == 1 ]]; then
   step "would write $CONF"
   note "REMOVE_EXTRA=\"$EXTRA\""
   note "KEEP_APPS=\"$KEEP\""
   note "PRIME=$PRIME ALEXA=$ALEXA LAUNCHER=$LAUNCHER DNSFILTER=$DNSFILTER SYSTEM_DNS=$SYSTEM_DNS YOUTUBE=$YOUTUBE"
   note "DNS_UPSTREAM=\"${DNS_UPSTREAM:-}\""
+  note "HOME_APP=\"${HOME_APP:-}\""
   exit 0
 fi
 
@@ -136,6 +169,7 @@ SYSTEM_DNS=$SYSTEM_DNS
 YOUTUBE=$YOUTUBE
 FILTER_AUTOSTART=$FILTER_AUTOSTART
 DNS_UPSTREAM="$DNS_UPSTREAM"
+HOME_APP="$HOME_APP"
 EOF_CONF
 
 # Prove the file before anyone sources it.
@@ -151,4 +185,5 @@ note "remove:  ${EXTRA:-nothing}"
 note "keep:    ${KEEP:-nothing extra}"
 note "prime=$PRIME alexa=$ALEXA launcher=$LAUNCHER dnsfilter=$DNSFILTER system_dns=$SYSTEM_DNS youtube=$YOUTUBE"
 note "dns upstream: ${DNS_UPSTREAM:-the router}"
+note "home app: ${HOME_APP:-dumbtv home}"
 note "change any answer later by running this again"

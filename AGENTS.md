@@ -97,7 +97,11 @@ people take them.
 who wants a specific Amazon feature. Fire OS 6 has one more question
 (`--system-dns`); its default is right for almost everyone. `--dns-upstream` is
 not one of the questions: leave it unset unless the owner names resolver IPs.
-Empty means the filter forwards unknown names to the router.
+Empty means the filter forwards unknown names to the router. `--home-app pkg`
+is not one of the questions either: on Fire OS 7 and 8 it makes HOME open another
+launcher the owner already installed (for example `com.overdevs.at4k`) instead
+of dumbtv home. Use it only when the owner names that launcher; the package must
+be in `adb shell pm list packages`. Empty means dumbtv home.
 
 Record the answers:
 

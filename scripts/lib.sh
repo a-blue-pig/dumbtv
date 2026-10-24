@@ -34,12 +34,14 @@ load_conf() {
   SYSTEM_DNS=${SYSTEM_DNS:-0}
   FILTER_AUTOSTART=${FILTER_AUTOSTART:-1}
   DNS_UPSTREAM=${DNS_UPSTREAM:-}
+  HOME_APP=${HOME_APP:-}
   [[ -f $CONF ]] && source "$CONF"
   KEEP_APPS=${KEEP_APPS:-}; REMOVE_EXTRA=${REMOVE_EXTRA:-}
   PRIME=${PRIME:-1}; ALEXA=${ALEXA:-1}; LAUNCHER=${LAUNCHER:-1}; DNSFILTER=${DNSFILTER:-1}
   SYSTEM_DNS=${SYSTEM_DNS:-0}
   FILTER_AUTOSTART=${FILTER_AUTOSTART:-1}
   DNS_UPSTREAM=${DNS_UPSTREAM:-}
+  HOME_APP=${HOME_APP:-}
 }
 
 # What debloat.sh disables: the ads and tracking list, plus Alexa only with ALEXA=0.
@@ -262,9 +264,12 @@ gateway() {
 }
 uid_of()     { dev "dumpsys package $1" | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1; }
 present()    { dev_ok "pm path $1" | grep -q '^package:'; }
-# The package a HOME press should land on: AT4K when it is installed, because Guard.java
-# hands HOME to it, otherwise dumbtv's own home.
-home_package() { if present com.overdevs.at4k; then echo com.overdevs.at4k; else echo tv.dumbtv.home; fi; }
+# The package a HOME press should land on: HOME_APP (dumbtv.conf) when it is set and
+# installed, because Guard.java hands HOME to it on Fire OS 7/8; otherwise dumbtv's own home.
+home_package() {
+  if [[ -n ${HOME_APP:-} && $SDK -ge 28 ]] && present "$HOME_APP"; then echo "$HOME_APP"
+  else echo tv.dumbtv.home; fi
+}
 # Shipped with the TV, as opposed to installed from a store.
 is_system()  { dev_ok "pm list packages -s" | tr -d '\r' | grep -qx "package:$1"; }
 
