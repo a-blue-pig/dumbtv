@@ -262,6 +262,9 @@ gateway() {
 }
 uid_of()     { dev "dumpsys package $1" | sed -n 's/.*userId=\([0-9]*\).*/\1/p' | head -1; }
 present()    { dev_ok "pm path $1" | grep -q '^package:'; }
+# The package a HOME press should land on: AT4K when it is installed, because Guard.java
+# hands HOME to it, otherwise dumbtv's own home.
+home_package() { if present com.overdevs.at4k; then echo com.overdevs.at4k; else echo tv.dumbtv.home; fi; }
 # Shipped with the TV, as opposed to installed from a store.
 is_system()  { dev_ok "pm list packages -s" | tr -d '\r' | grep -qx "package:$1"; }
 

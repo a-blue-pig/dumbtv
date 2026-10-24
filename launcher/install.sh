@@ -12,6 +12,8 @@ source version.env
 APK_URL=https://github.com/humblemuzzu/dumbtv/releases/download/launcher-v$VERSION/dumbtv-home.apk
 
 PKG=tv.dumbtv.home
+# Guard hands HOME to this package when it is installed (Guard.target); else to dumbtv home.
+AT4K=com.overdevs.at4k
 GUARD=$PKG/$PKG.Guard
 OLD_GUARD=com.spocky.projengmenu/com.spocky.projengmenu.services.ProjectivyAccessibilityService
 ADB=${ADB:-adb}
@@ -195,7 +197,12 @@ if [[ $bound == 0 ]]; then
   set_guard ""
   exit 1
 fi
-sh_ am start -W -n $PKG/.Home >/dev/null
+if installed $AT4K; then
+  sh_ am start -W -a android.intent.action.MAIN -c android.intent.category.HOME -p $AT4K >/dev/null
+else
+  echo "note: AT4K ($AT4K) is not installed, so HOME opens dumbtv home. Install AT4K, then run this again."
+  sh_ am start -W -n $PKG/.Home >/dev/null
+fi
 if installed com.spocky.projengmenu; then
   echo "note: Projectivy is still installed but no longer used — adb uninstall com.spocky.projengmenu"
 fi

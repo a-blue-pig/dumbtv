@@ -106,14 +106,16 @@ else
   # Leave the home screen first: a swap that starts while our own activity is
   # still resumed is allowed anyway, and that would hide a takeover that is
   # broken.
+  # Guard hands HOME to AT4K when it is installed (Guard.target), so that is where it must land.
+  home_pkg=$(home_package)
   [[ $wake == Awake ]] || { dev 'input keyevent KEYCODE_WAKEUP' >/dev/null 2>&1 || true; sleep 2; }
   dev 'am start -a android.intent.action.MAIN -c android.intent.category.LEANBACK_SETTINGS' >/dev/null 2>&1 || true
   for i in 1 2 3 4 5 6; do
     away=$(front_activity)
-    [[ -n $away && $away != tv.dumbtv.home/* ]] && break
+    [[ -n $away && $away != tv.dumbtv.home/* && $away != "$home_pkg"/* ]] && break
     sleep 1
   done
-  if [[ -z $away || $away == tv.dumbtv.home/* ]]; then
+  if [[ -z $away || $away == tv.dumbtv.home/* || $away == "$home_pkg"/* ]]; then
     printf '%-10s %-38s %s\n' skip home-key "could not leave the home screen; press HOME to check"
   else
     dev 'input keyevent KEYCODE_HOME' >/dev/null 2>&1 || true
@@ -121,10 +123,10 @@ else
     for i in 1 2 3 4 5 6 7 8; do
       sleep 1
       landed=$(front_activity)
-      [[ $landed == tv.dumbtv.home/* ]] && break
+      [[ $landed == "$home_pkg"/* ]] && break
     done
     case $landed in
-      tv.dumbtv.home/*) printf '%-10s %-38s %s\n' ok home-key "HOME lands on $landed" ;;
+      "$home_pkg"/*) printf '%-10s %-38s %s\n' ok home-key "HOME lands on $landed" ;;
       *) printf '%-10s %-38s %s\n' FAIL home-key "HOME lands on ${landed:-unknown}"; fail=1 ;;
     esac
   fi

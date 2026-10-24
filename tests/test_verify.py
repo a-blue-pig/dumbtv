@@ -36,6 +36,8 @@ class VerifyTests(unittest.TestCase):
                 {'out': resumed(away)},
                 {'out': resumed(landed)},
             ],
+            # AT4K absent unless a test says otherwise: HOME then lands on dumbtv home.
+            'pm path com.overdevs.at4k': {'out': ''},
             'dumpsys power': {'out': 'mWakefulness=Awake'},
             'settings get global alarm_manager_constants': {'out': alarms},
             'am get-current-user': {'out': user},
@@ -169,6 +171,22 @@ class VerifyTests(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout)
         self.assertIn('ok         home-key', result.stdout)
         self.assertIn('HOME lands on tv.dumbtv.home/.Home', result.stdout)
+
+    AT4K_INSTALLED = {'pm path com.overdevs.at4k': {'out': 'package:/data/app/com.overdevs.at4k/base.apk'}}
+
+    def test_home_key_lands_on_at4k_when_it_is_installed(self):
+        result, _ = self.run_verify(self.modern(LABEL), landed='com.overdevs.at4k/.MainActivity',
+                                    extra=self.AT4K_INSTALLED)
+        self.assertEqual(result.returncode, 0, result.stdout)
+        self.assertIn('HOME lands on com.overdevs.at4k/.MainActivity', result.stdout)
+
+    def test_home_key_on_dumbtv_home_fails_when_at4k_is_installed(self):
+        # Guard falls back to dumbtv home only when AT4K is missing; landing there with
+        # AT4K installed means the redirect did not work.
+        result, _ = self.run_verify(self.modern(LABEL), landed='tv.dumbtv.home/.Home',
+                                    extra=self.AT4K_INSTALLED)
+        self.assertEqual(result.returncode, 1)
+        self.assertIn('FAIL       home-key', result.stdout)
 
     def test_home_key_on_another_launcher_is_a_failure(self):
         # The service can be bound and the alarm can fire while HOME stays on

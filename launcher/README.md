@@ -192,6 +192,16 @@ protected package. Measured on a Fire OS 7 television:
 
 HOME from an app shows about 0.3 s of black, then this home screen.
 
+### Handing HOME to AT4K (Fire OS 7 and 8)
+
+If AT4K (`com.overdevs.at4k`) is installed, `Guard` launches its home screen
+instead of dumbtv home; if it is not, `Guard` falls back to dumbtv home, so
+removing AT4K never leaves HOME dead. The cover is removed as soon as AT4K's
+first window appears (dumbtv home does it itself, AT4K cannot). `Keeper`, the
+Fire OS 6 path, still launches dumbtv home. `./scripts/verify.sh` expects HOME
+to land on AT4K when it is installed. Install AT4K before running
+`install.sh`; the release APK does not contain this change, so use `--build`.
+
 ### Fire OS 6
 
 Fire OS 6.7 refuses third-party accessibility services, so it uses `Keeper`, a

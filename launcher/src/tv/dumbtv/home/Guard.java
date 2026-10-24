@@ -7,6 +7,7 @@ import android.app.PendingIntent;
 import android.content.ActivityNotFoundException;
 import android.content.Context;
 import android.content.Intent;
+import android.content.pm.PackageManager;
 import android.graphics.PixelFormat;
 import android.os.Handler;
 import android.os.Looper;
@@ -26,6 +27,7 @@ import android.view.accessibility.AccessibilityEvent;
  * {@code alarm_manager_constants} has {@code min_futurity=0}; install.sh sets it.
  *
  * Amazon's home is covered with a plain overlay until ours has drawn, so it never shows.
+ * "Ours" is AT4K ({@link #AT4K}) when it is installed, otherwise dumbtv's own {@link Home}.
  *
  * Android 11 refuses an activity start from an app with no visible window, even one sent
  * through system_server by an alarm ("Background activity start ... callingUidHasAnyVisibleWindow:
@@ -34,6 +36,8 @@ import android.view.accessibility.AccessibilityEvent;
  */
 public final class Guard extends AccessibilityService {
     static final String AMAZON = "com.amazon.tv.launcher";
+    /** The home screen HOME is handed to when it is installed; see {@link #target}. */
+    static final String AT4K = "com.overdevs.at4k";
     private static final String AMAZON_HOME = "com.amazon.tv.launcher.ui.HomeActivity_vNext";
     private static final long COVER_MAX_MS = 1500;
     private static final long REPEAT_MS = 1000;
@@ -71,11 +75,26 @@ public final class Guard extends AccessibilityService {
     }
 
     private static PendingIntent launch(Context c) {
-        Intent i = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
-                .setClass(c, Home.class)
+        Intent i = target(c)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK | Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED);
         return PendingIntent.getActivity(c, 0, i, PendingIntent.FLAG_UPDATE_CURRENT,
                 ActivityOptions.makeCustomAnimation(c, 0, 0).toBundle());
+    }
+
+    /**
+     * What a HOME press lands on: AT4K's home screen when AT4K is installed, else its launcher
+     * entry, else our own {@link Home}. The fallback matters because the alarm sends the intent
+     * from system_server, where a missing package fails silently and leaves Amazon's home up.
+     */
+    private static Intent target(Context c) {
+        PackageManager pm = c.getPackageManager();
+        Intent home = new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                .setPackage(AT4K);
+        if (home.resolveActivity(pm) != null) return home;
+        Intent entry = pm.getLaunchIntentForPackage(AT4K);
+        if (entry != null) return entry;
+        return new Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+                .setClass(c, Home.class);
     }
 
     static void amazon(Context c) {
@@ -123,7 +142,11 @@ public final class Guard extends AccessibilityService {
         if (!AMAZON.contentEquals(pkg)) {
             if ("com.android.systemui".contentEquals(pkg) || "android".contentEquals(pkg)) return;
             paused = false;
-            if (!getPackageName().contentEquals(pkg)) arrived(this);
+            if (!getPackageName().contentEquals(pkg)) {
+                arrived(this);
+                // Home calls shown() once it has drawn; AT4K cannot, so its first window does.
+                uncover();
+            }
             return;
         }
         if (paused || cls == null || !AMAZON_HOME.contentEquals(cls)) return;
